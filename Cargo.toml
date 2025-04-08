@@ -4,5 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-libp2p = { version = "0.50", features = ["tcp-tokio", "mdns-tokio"] }
-tokio = { version = "1", features = ["full"] }
+libp2p = "0.55.0"
+tokio = "1.44.2"
+tower = "0.5.2"
+futures = "0.3.31"
+async-trait = "0.1.88"

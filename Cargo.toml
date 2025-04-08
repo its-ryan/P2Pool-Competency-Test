@@ -1,0 +1,8 @@
+[package]
+name = "p2p_node"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+libp2p = { version = "0.50", features = ["tcp-tokio", "mdns-tokio"] }
+tokio = { version = "1", features = ["full"] }

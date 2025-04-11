@@ -1,63 +1,84 @@
 use async_trait::async_trait;
-use libp2p::request_response::{ProtocolName, RequestResponseCodec};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use libp2p::core::upgrade::ProtocolName;
+use libp2p::request_response::Codec;
 use std::io;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 #[derive(Clone)]
-pub struct TimeProtocol();
+pub struct TimeProtocol;
 
 impl ProtocolName for TimeProtocol {
     fn protocol_name(&self) -> &[u8] {
-        b"/custom/time/1.0"
+        b"/time/reqrep/1.0.0"
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct TimeRequest(pub Vec<u8>); // could be empty or contain requester info
-
-#[derive(Debug, Clone)]
-pub struct TimeResponse(pub Vec<u8>); // UTF-8 string of current time
+impl Default for TimeCodec {
+    fn default() -> Self {
+        TimeCodec
+    }
+}
 
 #[derive(Clone)]
-pub struct TimeCodec();
+pub struct TimeCodec;
 
 #[async_trait]
-impl RequestResponseCodec for TimeCodec {
+impl Codec for TimeCodec {
     type Protocol = TimeProtocol;
-    type Request = TimeRequest;
-    type Response = TimeResponse;
+    type Request = Vec<u8>;
+    type Response = Vec<u8>;
 
-    async fn read_request<T>(&mut self, _: &Self::Protocol, io: &mut T) -> io::Result<TimeRequest>
+    async fn read_request<'life0, T>(
+        &'life0 mut self,
+        _: &Self::Protocol,
+        io: &mut T,
+    ) -> io::Result<Self::Request>
     where
-        T: AsyncRead + Unpin + Send,
+        T: AsyncRead + Unpin + Send + 'life0,
     {
-        let mut buf = Vec::new();
-        io.read_to_end(&mut buf).await?;
-        Ok(TimeRequest(buf))
+        let mut buffer = vec![];
+        io.read_to_end(&mut buffer).await?;
+        Ok(buffer)
     }
 
-    async fn read_response<T>(&mut self, _: &Self::Protocol, io: &mut T) -> io::Result<TimeResponse>
+    async fn read_response<'life0, T>(
+        &'life0 mut self,
+        _: &Self::Protocol,
+        io: &mut T,
+    ) -> io::Result<Self::Response>
     where
-        T: AsyncRead + Unpin + Send,
+        T: AsyncRead + Unpin + Send + 'life0,
     {
-        let mut buf = Vec::new();
-        io.read_to_end(&mut buf).await?;
-        Ok(TimeResponse(buf))
+        let mut buffer = vec![];
+        io.read_to_end(&mut buffer).await?;
+        Ok(buffer)
     }
 
-    async fn write_request<T>(&mut self, _: &Self::Protocol, io: &mut T, TimeRequest(data): TimeRequest) -> io::Result<()>
+    async fn write_request<'life0, T>(
+        &'life0 mut self,
+        _: &Self::Protocol,
+        io: &mut T,
+        req: Self::Request,
+    ) -> io::Result<()>
     where
-        T: AsyncWrite + Unpin + Send,
+        T: AsyncWrite + Unpin + Send + 'life0,
     {
-        io.write_all(&data).await?;
-        io.shutdown().await
+        io.write_all(&req).await?;
+        io.flush().await?;
+        Ok(())
     }
 
-    async fn write_response<T>(&mut self, _: &Self::Protocol, io: &mut T, TimeResponse(data): TimeResponse) -> io::Result<()>
+    async fn write_response<'life0, T>(
+        &'life0 mut self,
+        _: &Self::Protocol,
+        io: &mut T,
+        res: Self::Response,
+    ) -> io::Result<()>
     where
-        T: AsyncWrite + Unpin + Send,
+        T: AsyncWrite + Unpin + Send + 'life0,
     {
-        io.write_all(&data).await?;
-        io.shutdown().await
+        io.write_all(&res).await?;
+        io.flush().await?;
+        Ok(())
     }
 }

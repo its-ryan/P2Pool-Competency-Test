@@ -1,11 +1,11 @@
 [package]
 name = "p2p_node"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
-libp2p = "0.55.0"
-tokio = "1.44.2"
-tower = "0.5.2"
-futures = "0.3.31"
-async-trait = "0.1.88"
+libp2p = { version = "0.53.2", features = ["tcp", "tokio", "noise", "yamux", "request-response"] }
+tokio = { version = "1.40", features = ["full"] }
+futures = "0.3"
+tower = "0.4"
+async-trait = "0.1"

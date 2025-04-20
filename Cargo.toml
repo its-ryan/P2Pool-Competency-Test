@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 libp2p = { version = "0.53", features = ["tokio", "tcp", "noise", "yamux", "request-response"] }
-tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread", "sync"] }
 tower = "0.4"
 futures = "0.3"
 thiserror = "1.0"

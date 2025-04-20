@@ -15,63 +15,61 @@ use tower::Service;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // If you provide a multiaddr as first arg, act as client; otherwise server.
     let mut args = env::args().skip(1);
-    let target = args.next();
+    let target_addr = args.next();
 
-    // Build swarm + Tower service
-    let key = identity::Keypair::generate_ed25519();
-    let mut swarm = build_swarm(key).await?;
-    let mut service = TowerService;
+    let local_key = identity::Keypair::generate_ed25519();
+    let mut swarm = build_swarm(local_key).await?;
+    let mut app_service = TowerService;
 
-    if let Some(addr_str) = target {
-        // Client mode: dial and ping
-        let remote: Multiaddr = addr_str.parse()?;
-        println!("Client: dialing {}...", remote);
-        swarm.dial(remote.clone())?;
+    match target_addr {
+        Some(addr_str) => {
+            // Client logic: Dial the specified address and send a ping.
+            let remote_address: Multiaddr = addr_str.parse()?;
+            println!("Client: dialing {}...", remote_address);
+            swarm.dial(remote_address.clone())?;
 
-        // Wait for a connection and then send ping once
-        loop {
-            if let SwarmEvent::ConnectionEstablished { peer_id, .. } = swarm.select_next_some().await {
-                println!("Client: connected to {}", peer_id);
-                let _req_id = swarm.behaviour_mut()
-                    .send_request(&peer_id, MyRequest(b"ping".to_vec()));
+            // Wait for connection establishment and send a ping request.
+            while let Some(event) = swarm.next().await {
+                if let SwarmEvent::ConnectionEstablished { peer_id, .. } = event {
+                    println!("Client: connected to {}", peer_id);
+                    swarm.behaviour_mut().send_request(&peer_id, MyRequest(b"ping".to_vec()));
 
-                // Await the pong
-                while let SwarmEvent::Behaviour(ReqRespEvent::Message { message, .. }) = swarm.select_next_some().await {
-                    if let ReqRespMessage::Response { request_id, response } = message {
-                        let MyResponse(data) = response;
-                        println!("Client: got pong '{}' for req {:?}", String::from_utf8_lossy(&data), request_id);
-                        return Ok(());
+                    // Await the pong response.
+                    while let Some(SwarmEvent::Behaviour(ReqRespEvent::Message { message, .. })) = swarm.next().await {
+                        if let ReqRespMessage::Response { request_id, response } = message {
+                            let MyResponse(data) = response;
+                            println!("Client: got pong '{}' for req {:?}", String::from_utf8_lossy(&data), request_id);
+                            return Ok(());
+                        }
                     }
                 }
             }
         }
-    } else {
-        // Server mode: listen and reply
-        let listen: Multiaddr = "/ip4/0.0.0.0/tcp/0".parse()?;
-        swarm.listen_on(listen)?;
+        None => {
+            // Server logic: Listen for incoming connections and respond to pings.
+            let listen_address: Multiaddr = "/ip4/0.0.0.0/tcp/0".parse()?;
+            swarm.listen_on(listen_address)?;
 
-        // Wait for the OS to assign a port, then print it
-        if let SwarmEvent::NewListenAddr { address, .. } = swarm.select_next_some().await {
-            let pid = swarm.local_peer_id();
-            println!("Server listening on {}", address);
-            println!("Full multiaddr: {}/p2p/{}", address, pid);
-        }
+            // Report the listening address.
+            if let Some(SwarmEvent::NewListenAddr { address, .. }) = swarm.next().await {
+                let peer_id = swarm.local_peer_id();
+                println!("Server listening on {}", address);
+                println!("Full multiaddr: {}/p2p/{}", address, peer_id);
+            }
 
-        println!("Server: waiting for incoming ping...");
+            println!("Server: waiting for incoming ping...");
 
-        // Wait for request and echo
-        loop {
-            if let SwarmEvent::Behaviour(ReqRespEvent::Message { message, .. }) = swarm.select_next_some().await {
+            // Process incoming ping requests and send back a pong response.
+            while let Some(SwarmEvent::Behaviour(ReqRespEvent::Message { message, .. })) = swarm.next().await {
                 if let ReqRespMessage::Request { request, channel, .. } = message {
                     let MyRequest(data) = request;
                     println!("Server: received ping '{}'", String::from_utf8_lossy(&data));
 
-                    // Use TowerService to echo back
-                    futures::future::poll_fn(|cx| service.poll_ready(cx)).await?;
-                    let resp_data = service.call(data).await?;
-                    if let Err(e) = swarm.behaviour_mut().send_response(channel, MyResponse(resp_data)) {
+                    // Use the application service to process the request (echo in this case).
+                    futures::future::poll_fn(|cx| app_service.poll_ready(cx)).await?;
+                    let response_data = app_service.call(data).await?;
+                    if let Err(e) = swarm.behaviour_mut().send_response(channel, MyResponse(response_data)) {
                         eprintln!("Server: failed to send pong: {:?}", e);
                     }
                     println!("Server: sent pong");
@@ -80,4 +78,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         }
     }
+    Ok(())
 }
